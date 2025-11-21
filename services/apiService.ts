@@ -9,6 +9,9 @@ async function fetchWithMockFallback<T>(
 ): Promise<T> {
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+    // NOTE: For read operations, strict error handling might be looser, 
+    // but for consistency, we usually want to mock only on network failures.
+    // However, to keep the "demo" feel alive even if endpoints 404, we keep this pattern for GET requests.
     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
     return await response.json();
   } catch (error) {
@@ -35,17 +38,17 @@ export const apiService = {
       const response = await fetch(`${API_BASE_URL}/files/upload`, {
         method: 'POST',
         body: formData,
-        // Note: Do not set Content-Type header manually when sending FormData;
-        // the browser will set it to multipart/form-data with the correct boundary.
       });
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        // If server returns 4xx/5xx, we return the error message, NOT the mock success
+        const errData = await response.json().catch(() => ({}));
+        return { success: false, message: errData.message || `Upload failed: ${response.statusText}` };
       }
       return await response.json();
     } catch (error) {
-      console.warn("Real upload failed, falling back to mock.", error);
-      // Mock fallback for demo purposes
+      console.warn("Real upload failed (Network Error), falling back to mock.", error);
+      // Only fall back to mock if the server is completely unreachable (Network Error)
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve({ 
@@ -69,7 +72,26 @@ export const apiService = {
   },
 
   deleteFile: async (filename: string): Promise<ApiResponse<any>> => {
-    return fetchWithMockFallback(`/files/${filename}`, { method: 'DELETE' }, { success: true, message: 'Deleted' });
+    try {
+      // Encode filename to handle spaces and special characters
+      const response = await fetch(`${API_BASE_URL}/files/${encodeURIComponent(filename)}`, { 
+        method: 'DELETE' 
+      });
+
+      if (!response.ok) {
+        // Return failure if server responds with error
+        const errData = await response.json().catch(() => ({}));
+        return { success: false, message: errData.message || `Delete failed: ${response.statusText}` };
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.warn("Delete request failed (Network Error), using mock.", error);
+      // Fallback only on network error
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ success: true, message: 'Deleted (Mock)' }), MOCK_DELAY);
+      });
+    }
   },
 
   // Knowledge Base Documents
@@ -92,11 +114,28 @@ export const apiService = {
   },
 
   deleteDocuments: async (filePaths: string[]): Promise<ApiResponse<any>> => {
-    return fetchWithMockFallback('/documents/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_paths: filePaths })
-    }, { success: true, successful_deletions: filePaths.length, failed_deletions: 0 });
+    try {
+      const response = await fetch(`${API_BASE_URL}/documents/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_paths: filePaths })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        return { success: false, message: errData.message || `Delete KB failed: ${response.statusText}` };
+      }
+      return await response.json();
+    } catch (error) {
+       console.warn("KB Delete request failed (Network Error), using mock.", error);
+       return new Promise((resolve) => {
+         setTimeout(() => resolve({ 
+           success: true, 
+           successful_deletions: filePaths.length, 
+           failed_deletions: 0 
+         }), MOCK_DELAY);
+       });
+    }
   },
 
   // Tasks

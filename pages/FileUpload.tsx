@@ -1,14 +1,20 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { FileItem } from '../types';
 import { apiService } from '../services/apiService';
-import { Upload, Trash2, FileText, CheckCircle, AlertCircle, RefreshCw, Plus, Database } from 'lucide-react';
+import { Upload, Trash2, FileText, RefreshCw, Database, File as FileIcon } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export const FileUpload: React.FC = () => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showToast } = useToast();
+  const { t } = useLanguage();
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -19,6 +25,7 @@ export const FileUpload: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
+      showToast(t('common.error'), "error");
     } finally {
       setLoading(false);
     }
@@ -34,21 +41,39 @@ export const FileUpload: React.FC = () => {
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleUpload(e.dataTransfer.files[0]);
+    }
+  };
+
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
       const res = await apiService.uploadFile(file);
       if (res.success) {
+        showToast(t('fileUpload.uploadSuccess', { name: file.name }), "success");
         await fetchFiles();
       } else {
-        alert(`Upload failed: ${res.message}`);
+        showToast(`${t('common.error')}: ${res.message}`, "error");
       }
     } catch (e) {
       console.error("Upload error:", e);
-      alert("Upload failed");
+      showToast(t('common.error'), "error");
     } finally {
       setUploading(false);
-      // Reset input so the same file can be selected again if needed
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -63,10 +88,26 @@ export const FileUpload: React.FC = () => {
   };
 
   const handleDelete = async (path: string) => {
-    if (!confirm("Are you sure you want to delete this file?")) return;
+    if (!confirm(t('fileUpload.deleteConfirm'))) return;
+    
     const filename = path.split('/').pop() || path;
-    await apiService.deleteFile(filename);
-    fetchFiles();
+    
+    try {
+      const res = await apiService.deleteFile(filename);
+      if (res.success) {
+        if (selectedFiles.has(path)) {
+          const newSet = new Set(selectedFiles);
+          newSet.delete(path);
+          setSelectedFiles(newSet);
+        }
+        showToast(t('common.success'), "success");
+        await fetchFiles();
+      } else {
+        showToast(`${t('common.delete')} ${t('common.failed')}: ${res.message}`, "error");
+      }
+    } catch (e) {
+      showToast(t('common.error'), "error");
+    }
   };
 
   const handleAddToKB = async () => {
@@ -74,11 +115,13 @@ export const FileUpload: React.FC = () => {
     try {
       const res = await apiService.addDocuments(Array.from(selectedFiles));
       if (res.success) {
-        alert(`Successfully added to processing queue. Task ID: ${res.task_id}`);
+        showToast(t('fileUpload.addToKbSuccess', { count: selectedFiles.size }), "success");
         setSelectedFiles(new Set());
+      } else {
+        showToast(res.message || t('common.error'), "warning");
       }
     } catch (e) {
-      alert("Failed to add to KB");
+      showToast(t('common.error'), "error");
     }
   };
 
@@ -91,15 +134,16 @@ export const FileUpload: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">File Management</h2>
-          <p className="text-slate-500 mt-1">Upload and manage raw files before processing.</p>
+          <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{t('fileUpload.title')}</h2>
+          <p className="text-slate-500 mt-1 text-lg">{t('fileUpload.subtitle')}</p>
         </div>
         <button 
           onClick={fetchFiles} 
-          className="p-2 text-slate-500 hover:text-blue-600 transition-colors rounded-full hover:bg-blue-50"
+          className="p-2.5 text-slate-500 hover:text-blue-600 transition-all rounded-full hover:bg-blue-50 border border-transparent hover:border-blue-100"
+          title={t('common.refresh')}
         >
           <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -108,62 +152,84 @@ export const FileUpload: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Upload Section */}
         <div className="lg:col-span-1">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-blue-600" />
-              Upload New File
-            </h3>
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 group"
-            >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                onChange={handleFileSelect}
-                disabled={uploading}
-              />
-              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                {uploading ? (
-                  <RefreshCw className="w-6 h-6 animate-spin" />
-                ) : (
-                  <Plus className="w-6 h-6" />
-                )}
-              </div>
-              <p className="text-sm font-medium text-slate-700">Click to browse</p>
-              <p className="text-xs text-slate-400 mt-1">PDF, DOCX, TXT supported</p>
+          <div 
+            className={`
+              relative h-64 rounded-2xl border-2 border-dashed transition-all duration-300 flex flex-col items-center justify-center text-center p-6 cursor-pointer overflow-hidden bg-white
+              ${isDragging 
+                ? 'border-blue-500 bg-blue-50/50 scale-[1.02] shadow-lg' 
+                : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'
+              }
+              ${uploading ? 'opacity-50 pointer-events-none' : ''}
+            `}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              onChange={handleFileSelect}
+              disabled={uploading}
+            />
+            
+            <div className={`
+              w-16 h-16 mb-4 rounded-2xl flex items-center justify-center transition-all duration-500
+              ${isDragging ? 'bg-blue-500 text-white shadow-blue-200 shadow-lg' : 'bg-blue-50 text-blue-600'}
+            `}>
+              {uploading ? (
+                <RefreshCw className="w-8 h-8 animate-spin" />
+              ) : (
+                <Upload className="w-8 h-8" />
+              )}
             </div>
+            
+            <h3 className="font-semibold text-slate-800 text-lg mb-1">
+              {uploading ? t('fileUpload.uploading') : isDragging ? t('fileUpload.dropHere') : t('fileUpload.uploadNew')}
+            </h3>
+            <p className="text-sm text-slate-500 max-w-[200px] mx-auto">
+              {t('fileUpload.supportText')}
+            </p>
           </div>
         </div>
 
         {/* File List Section */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-semibold text-lg">Uploaded Files ({files.length})</h3>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-full overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+              <div className="flex items-center gap-2">
+                <div className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-bold">
+                  {files.length}
+                </div>
+                <h3 className="font-semibold text-slate-700">{t('fileUpload.availableFiles')}</h3>
+              </div>
+              
               {selectedFiles.size > 0 && (
                 <button 
                   onClick={handleAddToKB}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 hover:shadow-md hover:shadow-blue-200 transition-all active:scale-95"
                 >
                   <Database className="w-4 h-4" />
-                  Add {selectedFiles.size} to Knowledge Base
+                  {t('fileUpload.processFiles', { count: selectedFiles.size })}
                 </button>
               )}
             </div>
             
-            <div className="flex-1 overflow-y-auto max-h-[500px] p-2">
+            <div className="flex-1 overflow-y-auto max-h-[500px]">
               {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <FileText className="w-12 h-12 mb-2 opacity-50" />
-                  <p>No files uploaded yet</p>
+                  <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
+                    <FileIcon className="w-8 h-8 opacity-50" />
+                  </div>
+                  <p className="font-medium">{t('fileUpload.noFiles')}</p>
+                  <p className="text-sm mt-1 text-slate-400">{t('fileUpload.noFilesSub')}</p>
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 sticky top-0 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <thead className="bg-slate-50/50 sticky top-0 text-xs font-semibold text-slate-500 uppercase tracking-wider backdrop-blur-sm">
                     <tr>
-                      <th className="px-4 py-3 w-12">
+                      <th className="px-6 py-4 w-12">
                         <input 
                           type="checkbox" 
                           onChange={(e) => {
@@ -171,43 +237,55 @@ export const FileUpload: React.FC = () => {
                             else setSelectedFiles(new Set());
                           }}
                           checked={files.length > 0 && selectedFiles.size === files.length}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                         />
                       </th>
-                      <th className="px-4 py-3">File Name</th>
-                      <th className="px-4 py-3">Size</th>
-                      <th className="px-4 py-3">Modified</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-6 py-4">{t('fileUpload.fileName')}</th>
+                      <th className="px-6 py-4">{t('fileUpload.size')}</th>
+                      <th className="px-6 py-4">{t('fileUpload.modified')}</th>
+                      <th className="px-6 py-4 text-right">{t('common.actions')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-50">
                     {files.map((file) => (
-                      <tr key={file.path} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-4 py-3">
+                      <tr 
+                        key={file.path} 
+                        className={`
+                          group transition-colors cursor-pointer
+                          ${selectedFiles.has(file.path) ? 'bg-blue-50/40' : 'hover:bg-slate-50/80'}
+                        `}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) return;
+                          toggleSelect(file.path);
+                        }}
+                      >
+                        <td className="px-6 py-4">
                           <input 
                             type="checkbox" 
                             checked={selectedFiles.has(file.path)}
                             onChange={() => toggleSelect(file.path)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                           />
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-blue-50 text-blue-600 flex items-center justify-center">
-                              <FileText className="w-4 h-4" />
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${selectedFiles.has(file.path) ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500 group-hover:bg-white group-hover:shadow-sm'}`}>
+                              <FileText className="w-5 h-5" />
                             </div>
-                            <span className="font-medium text-slate-700">{file.name}</span>
+                            <span className={`font-medium ${selectedFiles.has(file.path) ? 'text-blue-700' : 'text-slate-700'}`}>
+                              {file.name}
+                            </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-500">{formatSize(file.size)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-500">
+                        <td className="px-6 py-4 text-sm text-slate-500 font-mono">{formatSize(file.size)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-500">
                           {new Date(file.modified).toLocaleDateString()}
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-6 py-4 text-right">
                           <button 
-                            onClick={() => handleDelete(file.path)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                            title="Delete File"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(file.path); }}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            title={t('common.delete')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

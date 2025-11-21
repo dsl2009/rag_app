@@ -1,14 +1,17 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { TaskItem } from '../types';
 import { apiService } from '../services/apiService';
-import { Activity, RefreshCw, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { STATUS_COLORS } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export const TaskMonitor: React.FC = () => {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const { t } = useLanguage();
 
   const fetchTasks = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -39,7 +42,7 @@ export const TaskMonitor: React.FC = () => {
   }, {} as Record<string, number>);
 
   const chartData = Object.keys(statusCounts).map(status => ({
-    name: status.charAt(0).toUpperCase() + status.slice(1),
+    name: t(`common.${status}`) || status,
     count: statusCounts[status],
     color: status === 'completed' ? '#22c55e' : status === 'failed' ? '#ef4444' : status === 'processing' ? '#3b82f6' : '#eab308'
   }));
@@ -48,8 +51,8 @@ export const TaskMonitor: React.FC = () => {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Task Monitor</h2>
-          <p className="text-slate-500 mt-1">Track ingestion and background processes.</p>
+          <h2 className="text-2xl font-bold text-slate-800">{t('taskMonitor.title')}</h2>
+          <p className="text-slate-500 mt-1">{t('taskMonitor.subtitle')}</p>
         </div>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
@@ -59,7 +62,7 @@ export const TaskMonitor: React.FC = () => {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
-            Auto-refresh
+            {t('taskMonitor.autoRefresh')}
           </label>
           <button 
             onClick={() => fetchTasks(true)}
@@ -73,7 +76,7 @@ export const TaskMonitor: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Chart Section */}
         <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h3 className="font-semibold text-slate-800 mb-6">Task Status Distribution</h3>
+          <h3 className="font-semibold text-slate-800 mb-6">{t('taskMonitor.chartTitle')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
@@ -97,7 +100,7 @@ export const TaskMonitor: React.FC = () => {
         {/* Task List */}
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-slate-100">
-            <h3 className="font-semibold text-slate-800">Recent Activities</h3>
+            <h3 className="font-semibold text-slate-800">{t('taskMonitor.recentActivity')}</h3>
           </div>
           <div className="overflow-y-auto max-h-[600px] p-6 space-y-4">
             {tasks.map((task) => (
@@ -117,13 +120,13 @@ export const TaskMonitor: React.FC = () => {
                     </div>
                   </div>
                   <span className={`px-2 py-1 rounded text-xs font-medium border ${STATUS_COLORS[task.status]}`}>
-                    {task.status}
+                    {t(`common.${task.status}`) || task.status}
                   </span>
                 </div>
                 
                 <div className="mt-3">
                   <div className="flex justify-between text-xs text-slate-500 mb-1">
-                    <span>Progress</span>
+                    <span>{t('taskMonitor.progress')}</span>
                     <span>{task.progress}%</span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -139,13 +142,13 @@ export const TaskMonitor: React.FC = () => {
                     {task.message || (task.error_message ? `Error: ${task.error_message}` : 'No status message')}
                   </p>
                   <div className="text-[10px] text-slate-300 mt-1 text-right">
-                    Started: {task.start_time ? new Date(task.start_time).toLocaleTimeString() : '-'}
+                    {t('taskMonitor.started')}: {task.start_time ? new Date(task.start_time).toLocaleTimeString() : '-'}
                   </div>
                 </div>
               </div>
             ))}
             {tasks.length === 0 && (
-              <div className="text-center text-slate-400 py-8">No recent tasks</div>
+              <div className="text-center text-slate-400 py-8">{t('taskMonitor.noTasks')}</div>
             )}
           </div>
         </div>
