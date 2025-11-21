@@ -1,0 +1,5 @@
+{
+  "name": "Knowledge Base RAG System",
+  "description": "A modern React knowledge base management system with file upload, document processing, task monitoring, and RAG-based Q&A capabilities.",
+  "requestFramePermissions": []
+}
