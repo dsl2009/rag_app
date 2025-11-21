@@ -132,7 +132,7 @@ export const Chat: React.FC = () => {
 
                 {/* Bubble */}
                 <div className={`
-                  px-6 py-4 rounded-2xl shadow-sm text-[15px] leading-relaxed tracking-wide
+                  px-6 py-4 rounded-2xl shadow-sm text-[15px] leading-relaxed tracking-wide whitespace-pre-wrap
                   ${msg.role === 'user' 
                     ? 'bg-slate-800 text-white rounded-tr-none shadow-md shadow-slate-200' 
                     : msg.is_error 
